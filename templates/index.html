@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Wikipedia Game</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 15px;
+            box-sizing: border-box;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            margin: 15px 0;
+        }
+
+        .path-item {
+            margin: 8px 0;
+            padding: 12px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+            word-break: break-all;
+        }
+
+        .current-step {
+            border-left: 4px solid #007bff;
+        }
+
+        .error {
+            color: red;
+            margin: 10px 0;
+        }
+
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+            width: 100%;
+        }
+
+        input {
+            padding: 12px;
+            width: 100%;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        button {
+            padding: 12px 16px;
+            width: 100%;
+            font-size: 1rem;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        #progress {
+            margin-top: 20px;
+        }
+
+        .thinking {
+            color: #666;
+            font-style: italic;
+        }
+
+        /* Media query for larger screens */
+        @media (min-width: 768px) {
+            body {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        label {
+            font-weight: 500;
+            color: #333;
+        }
+
+        .help-text {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 2px;
+        }
+
+        .search-container {
+            position: relative;
+            width: 100%;
+        }
+
+        .search-results {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .search-result {
+            padding: 8px 12px;
+            cursor: pointer;
+        }
+
+        .search-result:hover {
+            background-color: #f5f5f5;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Wikipedia Game Path Finder</h1>
+
+    <form id="gameForm">
+        <div class="form-group">
+            <label for="start">Starting Article</label>
+            <div class="search-container">
+                <input type="text" id="start_search" placeholder="Type to search Wikipedia..." required>
+                <input type="hidden" id="start" name="start">
+                <div id="start_results" class="search-results"></div>
+            </div>
+            <span class="help-text">The Wikipedia article you want to start from</span>
+        </div>
+
+        <div class="form-group">
+            <label for="end">Target Article</label>
+            <div class="search-container">
+                <input type="text" id="end_search" placeholder="Type to search Wikipedia..." required>
+                <input type="hidden" id="end" name="end">
+                <div id="end_results" class="search-results"></div>
+            </div>
+            <span class="help-text">The Wikipedia article you want to reach</span>
+        </div>
+
+        <div class="form-group">
+            <label for="max_steps">Maximum Steps</label>
+            <input type="number" id="max_steps" name="max_steps" value="10" min="1" max="20">
+            <span class="help-text">Maximum number of links to follow (1-20)</span>
+        </div>
+
+        <button type="submit">Find Path</button>
+    </form>
+
+    <div id="progress"></div>
+
+    <script>
+        const form = document.getElementById('gameForm');
+        const progress = document.getElementById('progress');
+
+        function setupSearch(searchInput, resultsDiv, hiddenInput) {
+            let timeout = null;
+
+            searchInput.addEventListener('input', () => {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => {
+                    const query = searchInput.value.trim();
+                    console.log('Searching for:', query);  // Debug log
+
+                    if (query.length < 3) {
+                        resultsDiv.style.display = 'none';
+                        return;
+                    }
+
+                    fetch(`/wikipedia-game/search?q=${encodeURIComponent(query)}`)
+                        .then(response => {
+                            console.log('Got response:', response);  // Debug log
+                            return response.json();
+                        })
+                        .then(results => {
+                            console.log('Got results:', results);  // Debug log
+                            resultsDiv.innerHTML = '';
+                            results.forEach(result => {
+                                const div = document.createElement('div');
+                                div.className = 'search-result';
+                                div.textContent = result.title;
+                                div.addEventListener('click', () => {
+                                    searchInput.value = result.title;
+                                    hiddenInput.value = result.url;
+                                    resultsDiv.style.display = 'none';
+                                });
+                                resultsDiv.appendChild(div);
+                            });
+                            resultsDiv.style.display = results.length ? 'block' : 'none';
+                        })
+                        .catch(error => {
+                            console.error('Search failed:', error);  // Debug log
+                        });
+                }, 300);
+            });
+
+            // Hide results when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!searchInput.contains(e.target) && !resultsDiv.contains(e.target)) {
+                    resultsDiv.style.display = 'none';
+                }
+            });
+        }
+
+        // Verify the elements exist
+        console.log('Start search:', document.getElementById('start_search'));
+        console.log('Start results:', document.getElementById('start_results'));
+        console.log('Start hidden:', document.getElementById('start'));
+
+        // Setup search for both inputs
+        setupSearch(
+            document.getElementById('start_search'),
+            document.getElementById('start_results'),
+            document.getElementById('start')
+        );
+        setupSearch(
+            document.getElementById('end_search'),
+            document.getElementById('end_results'),
+            document.getElementById('end')
+        );
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            progress.innerHTML = '';
+
+            const formData = new FormData(form);
+            const params = new URLSearchParams(formData);
+
+            // Add starting point as step 0
+            const startUrl = formData.get('start');
+            const stepDiv = document.createElement('div');
+            stepDiv.className = 'path-item current-step';
+            stepDiv.innerHTML = `
+                0. Starting point<br>
+                <a href="${startUrl}" target="_blank">${startUrl}</a>
+            `;
+            progress.appendChild(stepDiv);
+
+            // Start SSE connection
+            const eventSource = new EventSource(`/wikipedia-game/stream?${params.toString()}`);
+
+            eventSource.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+
+                if (data.type === 'thinking') {
+                    const lastStep = progress.lastElementChild;
+                    if (lastStep) {
+                        lastStep.innerHTML += `<div class="thinking">Thinking about next move...</div>`;
+                        lastStep.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                    }
+                } else if (data.type === 'step') {
+                    const thinking = progress.querySelector('.thinking');
+                    if (thinking) thinking.remove();
+
+                    const stepDiv = document.createElement('div');
+                    stepDiv.className = 'path-item current-step';
+                    stepDiv.innerHTML = `
+                        ${data.step}. ${data.link_name}<br>
+                        <a href="${data.url}" target="_blank">${data.url}</a>
+                    `;
+
+                    const currentStep = progress.querySelector('.current-step');
+                    if (currentStep) {
+                        currentStep.classList.remove('current-step');
+                    }
+
+                    progress.appendChild(stepDiv);
+                    stepDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                } else if (data.type === 'complete') {
+                    eventSource.close();
+                    const resultDiv = document.createElement('div');
+                    resultDiv.innerHTML = `<h3>${data.message}</h3>`;
+                    progress.appendChild(resultDiv);
+                    resultDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                } else if (data.type === 'error') {
+                    eventSource.close();
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'error';
+                    errorDiv.textContent = data.message;
+                    progress.appendChild(errorDiv);
+                }
+            };
+        });
+    </script>
+</body>
+
+</html>
